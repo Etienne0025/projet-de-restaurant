@@ -1,4 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
+import 'accueil.dart'; // Assurez-vous que ce fichier existe et exporte Accueil
 
 class InscriptionPage extends StatefulWidget {
   const InscriptionPage({super.key});
@@ -9,171 +14,213 @@ class InscriptionPage extends StatefulWidget {
 
 class _InscriptionPageState extends State<InscriptionPage> {
   final _formKey = GlobalKey<FormState>();
-
-  // Contrôleurs pour récupérer les données
-  final _nomController = TextEditingController();
-  final _prenomController = TextEditingController();
-  final _matriculeController = TextEditingController();
   final _emailController = TextEditingController();
-  final _passController = TextEditingController();
-  final _confirmPassController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  final _matriculeController = TextEditingController();
 
-  bool _isObscure = true;
+  bool _isObscurePassword = true;
+  bool _isObscureConfirm = true;
+  bool _isLoading = false;
 
   @override
   void dispose() {
-    _nomController.dispose();
-    _prenomController.dispose();
-    _matriculeController.dispose();
     _emailController.dispose();
-    _passController.dispose();
-    _confirmPassController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _matriculeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleSignUp() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+    debugPrint('🚀 Début inscription - email: ${_emailController.text}');
+
+    try {
+      debugPrint('📝 Appel FirebaseAuth.createUserWithEmailAndPassword...');
+      UserCredential userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          debugPrint('⏰ TIMEOUT Firebase Auth');
+          throw TimeoutException(
+              "Le serveur ne répond pas. Vérifiez votre connexion.");
+        },
+      );
+
+      debugPrint('✅ Firebase Auth réussi - UID: ${userCredential.user?.uid}');
+
+      debugPrint('💾 Écriture dans Firestore...');
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .set({
+        'email': _emailController.text.trim(),
+        'matricule': _matriculeController.text.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      debugPrint('🎉 Firestore : écriture OK');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Compte créé avec succès !"),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Redirection vers la page d'accueil (sans const)
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => Accueil()),
+      );
+    } on TimeoutException catch (e) {
+      debugPrint('❌ TimeoutException: $e');
+      _showError(e.message ?? "Délai d'attente dépassé");
+    } on FirebaseAuthException catch (e) {
+      debugPrint('🔥 FirebaseAuthException: ${e.code} - ${e.message}');
+      String message = "Erreur d'authentification";
+      if (e.code == 'email-already-in-use') {
+        message = "Cet email est déjà utilisé.";
+      } else if (e.code == 'weak-password') {
+        message = "Mot de passe trop faible (minimum 6 caractères).";
+      } else if (e.code == 'invalid-email') {
+        message = "L'email n'est pas valide.";
+      } else {
+        message = e.message ?? message;
+      }
+      _showError(message);
+    } on FirebaseException catch (e) {
+      debugPrint('🔥 Firestore Exception: ${e.message}');
+      _showError("Erreur Firestore : ${e.message}");
+    } catch (e, stack) {
+      debugPrint('❌ Exception inattendue: $e');
+      debugPrint(stack.toString());
+      _showError("Une erreur s'est produite : $e");
+    } finally {
+      debugPrint('🏁 Fin _handleSignUp');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      // AJOUT : Une AppBar transparente pour avoir le bouton retour en haut à gauche
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF880E4F)),
-          onPressed: () {
-            Navigator.pop(context); // Retour à la page précédente (Login)
-          },
-        ),
+        title: const Text("Inscription"),
+        backgroundColor: Colors.pink,
+        foregroundColor: Colors.white,
       ),
-      // On utilise extendBodyBehindAppBar pour que le contenu commence tout en haut
-      extendBodyBehindAppBar: true,
       body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Header Blanc/Rose avec ton logo UAC
-            Container(
-              height: 220,
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFFFFF),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+        padding: const EdgeInsets.all(25),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                "Créer votre compte étudiant",
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
               ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 40), // Un peu plus d'espace pour l'AppBar
-                    Image.asset(
-                      'asset/image/uac.png',
-                      height: 110,
-                      errorBuilder: (context, error, stackTrace) =>
-                      const Icon(Icons.school, size: 80, color: Color(0xFF880E4F)),
-                    ),
-                  ],
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: _matriculeController,
+                decoration: const InputDecoration(
+                  labelText: 'N° Matricule',
+                  prefixIcon: Icon(Icons.badge),
                 ),
+                validator: (value) =>
+                value == null || value.isEmpty ? 'Matricule requis' : null,
               ),
-            ),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 25),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    _buildField("Nom", _nomController),
-                    _buildField("Prénoms", _prenomController),
-                    _buildField("Matricule", _matriculeController),
-                    _buildField("E-mail", _emailController,
-                        keyboardType: TextInputType.emailAddress, isEmail: true),
-                    _buildField("Mot de passe", _passController, isPassword: true),
-                    _buildField("Confirmer Mot de passe", _confirmPassController,
-                        isPassword: true, isConfirm: true),
-
-                    const SizedBox(height: 30),
-
-                    // Bouton S'inscrire
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          if (_formKey.currentState!.validate()) {
-                            // Affiche le message de succès
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Inscription réussie ! Redirection...'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-
-                            // AJOUT : On attend 2 secondes puis on retourne au Login
-                            Future.delayed(const Duration(seconds: 2), () {
-                              if (mounted) {
-                                Navigator.pop(context);
-                              }
-                            });
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF880E4F),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(25),
-                          ),
-                        ),
-                        child: const Text(
-                          "S'inscrire",
-                          style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 15),
+              TextFormField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.email),
                 ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Email requis';
+                  if (!value.contains('@') || !value.contains('.'))
+                    return 'Email invalide';
+                  return null;
+                },
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildField(String hint, TextEditingController controller,
-      {bool isPassword = false,
-        TextInputType keyboardType = TextInputType.text,
-        bool isEmail = false,
-        bool isConfirm = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15.0),
-      child: TextFormField(
-        controller: controller,
-        obscureText: isPassword ? _isObscure : false,
-        keyboardType: keyboardType,
-        validator: (value) {
-          if (value == null || value.isEmpty) return "Champ obligatoire";
-          if (isEmail && !value.contains('@')) return "Email invalide";
-          if (isConfirm && value != _passController.text)
-            return "Mots de passe différents";
-          return null;
-        },
-        decoration: InputDecoration(
-          hintText: hint,
-          filled: true,
-          fillColor: Colors.grey[200],
-          suffixIcon: isPassword
-              ? IconButton(
-            icon: Icon(_isObscure ? Icons.visibility_off : Icons.visibility),
-            onPressed: () => setState(() => _isObscure = !_isObscure),
-          )
-              : null,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
+              const SizedBox(height: 15),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: _isObscurePassword,
+                decoration: InputDecoration(
+                  labelText: 'Mot de passe',
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(_isObscurePassword
+                        ? Icons.visibility_off
+                        : Icons.visibility),
+                    onPressed: () => setState(
+                            () => _isObscurePassword = !_isObscurePassword),
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty)
+                    return 'Mot de passe requis';
+                  if (value.length < 6) return 'Minimum 6 caractères';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 15),
+              TextFormField(
+                controller: _confirmPasswordController,
+                obscureText: _isObscureConfirm,
+                decoration: InputDecoration(
+                  labelText: 'Confirmer le mot de passe',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    icon: Icon(_isObscureConfirm
+                        ? Icons.visibility_off
+                        : Icons.visibility),
+                    onPressed: () => setState(
+                            () => _isObscureConfirm = !_isObscureConfirm),
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty)
+                    return 'Confirmation requise';
+                  if (value != _passwordController.text)
+                    return 'Les mots de passe ne correspondent pas';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 30),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _handleSignUp,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.pink,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text("S'inscrire"),
+              ),
+            ],
           ),
-          contentPadding:
-          const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         ),
       ),
     );

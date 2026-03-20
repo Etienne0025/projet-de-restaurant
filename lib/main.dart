@@ -1,8 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
+import 'firebase_options.dart';
+
+// Tes imports
 import 'forminscri.dart';
 import 'motdepasseoublie.dart';
+import 'accueil.dart'; // Ce fichier contient la classe Accueil
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint("Erreur d'initialisation Firebase: $e");
+  }
   runApp(const MyApp());
 }
 
@@ -15,7 +30,9 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Restaurant UAC',
       theme: ThemeData(
-        primarySwatch: Colors.pink,
+        primaryColor: Colors.pink,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.pink),
+        useMaterial3: true,
       ),
       home: const LoginPage(),
     );
@@ -30,189 +47,126 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  // La clé est déclarée à l'intérieur du State pour être bien gérée par Flutter
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isObscure = true;
+  bool _isMounted = true;
+
+  @override
+  void dispose() {
+    _isMounted = false;
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(color: Colors.pink),
+      ),
+    );
+
+    try {
+      await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      )
+          .timeout(const Duration(seconds: 15));
+
+      if (!_isMounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+
+      // CORRECTION ICI : Utilisation du nom de classe "Accueil" et retrait du "const"
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const Accueil()),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!_isMounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      _showSnackBar(e.message ?? "Erreur de connexion", Colors.red);
+    } catch (e) {
+      if (!_isMounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      _showSnackBar("Erreur : $e", Colors.grey);
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isSmallScreen = size.width < 600;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFFCE4EC), // Rose très clair (pink[50])
+      backgroundColor: const Color(0xFFFCE4EC),
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: 20),
+          padding: const EdgeInsets.all(25),
           child: Form(
             key: _formKey,
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                // 1. Logo UAC
+              children: [
                 Image.asset(
                   'asset/image/uac.png',
-                  height: isSmallScreen ? 120 : 180,
-                  fit: BoxFit.contain,
-                  // Si l'image n'est pas trouvée, affiche une icône de secours
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(Icons.school, size: 100, color: Colors.pink);
-                  },
+                  height: 120,
+                  errorBuilder: (c, e, s) => const Icon(Icons.school, size: 80, color: Colors.pink),
                 ),
                 const SizedBox(height: 30),
-
-                // 2. Champ Matricule (8 chiffres)
-                _buildTextField(
-                  label: 'Matricule',
-                  icon: Icons.person_outline,
-                  isNumber: true,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Veuillez entrer votre matricule';
-                    }
-                    if (value.length != 8) {
-                      return 'Le matricule doit faire 8 chiffres';
-                    }
-                    if (!RegExp(r'^[0-9]+$').hasMatch(value)) {
-                      return 'Uniquement des chiffres';
-                    }
-                    return null;
-                  },
-                ),
-
-                // 3. Champ Mot de passe
-                _buildTextField(
-                  label: 'Mot de passe',
-                  icon: Icons.lock_outline,
-                  isPassword: true,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Mot de passe requis';
-                    }
-                    return null;
-                  },
-                ),
-
-                // 4. Mot de passe oublié
-                Container(
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 35.0, bottom: 20.0),
-                  child: GestureDetector(
-                    onTap: () {
-                      // C'est ICI qu'on met la navigation
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const ForgotPasswordPage()),
-                      );
-                    },
-                    child: Text(
-                      'Mot de passe oublié',
-                      style: TextStyle(color: Colors.grey[700], fontSize: 13),
-                    ),
+                const Text("Connexion Restaurant UAC",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.pink)),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: _emailController,
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: const Icon(Icons.email_outlined, color: Colors.pink),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                   ),
-                ),
-
-                // 5. Bouton S'inscrire
-                _buildButton(
-                  text: "S'inscrire",
-                  isPrimary: true,
-                  onPressed: () {
-                    // Logique pour aller vers la page d'inscription
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const InscriptionPage()),
-                    );
-                  },
+                  validator: (v) => (v == null || !v.contains('@')) ? 'Email invalide' : null,
                 ),
                 const SizedBox(height: 15),
-
-                // 6. Bouton Se connecter
-                _buildButton(
-                  text: "Se connecter",
-                  isPrimary: false,
-                  onPressed: () {
-                    // Appel de la validation via la clé
-                    if (_formKey.currentState!.validate()) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Vérification du matricule...')),
-                      );
-                    }
-                  },
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _isObscure,
+                  decoration: InputDecoration(
+                    labelText: 'Mot de passe',
+                    prefixIcon: const Icon(Icons.lock_outline, color: Colors.pink),
+                    suffixIcon: IconButton(
+                      icon: Icon(_isObscure ? Icons.visibility_off : Icons.visibility),
+                      onPressed: () => setState(() => _isObscure = !_isObscure),
+                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                  validator: (v) => (v == null || v.length < 6) ? 'Trop court' : null,
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: _handleLogin,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.pink,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                  child: const Text("Se connecter"),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const InscriptionPage())),
+                  child: const Text("Créer un compte", style: TextStyle(color: Colors.pink)),
                 ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  // --- WIDGETS PERSONNALISÉS (Logique de construction) ---
-
-  Widget _buildTextField({
-    required String label,
-    required IconData icon,
-    bool isPassword = false,
-    bool isNumber = false,
-    String? Function(String?)? validator,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 8.0),
-      child: TextFormField(
-        obscureText: isPassword,
-        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-        maxLength: isNumber ? 8 : null,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon),
-          counterText: "", // Cache le compteur de caractères par défaut
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(15.0),
-            borderSide: BorderSide.none,
-          ),
-          contentPadding: const EdgeInsets.symmetric(vertical: 18),
-        ),
-        validator: validator,
-      ),
-    );
-  }
-
-  Widget _buildButton({
-    required String text,
-    required bool isPrimary,
-    required VoidCallback onPressed,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 30.0),
-      child: isPrimary
-          ? ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.pink[400],
-          minimumSize: const Size(double.infinity, 55),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          elevation: 2,
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-      )
-          : OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: Colors.grey, width: 1.5),
-          minimumSize: const Size(double.infinity, 55),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(color: Colors.grey[800], fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
     );

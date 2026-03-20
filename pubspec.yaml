@@ -28,12 +28,20 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+
+
   flutter:
     sdk: flutter
+  qr_flutter: ^4.1.0
+  firebase_core: ^3.9.0
+  firebase_auth: ^5.3.4
+  cloud_firestore: ^5.5.0
+
+
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
+
 
 dev_dependencies:
   flutter_test:
@@ -45,6 +53,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -61,6 +70,17 @@ flutter:
   assets:
       - asset/image/logo_desktop-kiwDumpT.png
       - asset/image/uac.png
+      - asset/image/im1.jpeg
+      - asset/image/im2.jpeg
+      - asset/image/im3.jpeg
+      - asset/image/im4.jpeg
+      - asset/image/im5.jpeg
+      - asset/image/im6.jpeg
+      - asset/image/im7.jpeg
+      - asset/image/im8.jpeg
+      - asset/image/im9.jpeg
+
+
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
